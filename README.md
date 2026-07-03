@@ -259,13 +259,4 @@ Browser-Automation-Using-Agentic-Loops/
 - Production hardening should add a real human approval step before final form
   submission.
 
-## Interview Talking Points
 
-- The project separates concerns into SQL agent, browser agent, and orchestrator.
-- LangGraph makes each state transition visible and testable.
-- The SQL graph is deterministic around execution and bounded retries.
-- The browser agent uses ReAct because it must adapt to page state.
-- Playwright MCP exposes structured browser observations, which is more robust
-  than screenshot-only or selector-only automation.
-- The dashboard is not just a UI wrapper; it is an observability layer for the
-  agent loop.
