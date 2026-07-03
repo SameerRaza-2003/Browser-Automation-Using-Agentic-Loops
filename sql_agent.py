@@ -80,7 +80,10 @@ Rules:
 - No explanation.
 - Never generate INSERT, UPDATE, DELETE, DROP, ALTER or CREATE.
 - Use only the schema provided.
-- If searching by a person's name, use first_name and last_name.
+- When searching by a person's name, use flexible matching:
+  match against (first_name || ' ' || last_name) using LIKE with wildcards,
+  e.g. WHERE (first_name || ' ' || last_name) LIKE '%search term%'
+  This handles cases where the split between first_name and last_name is ambiguous.
 
 User Question:
 {state["question"]}
@@ -190,7 +193,7 @@ if __name__ == "__main__":
     question = (
         sys.argv[1]
         if len(sys.argv) > 1
-        else "Get all details for the customer named Ayesha Khan"
+        else "Get all details for the customer named Sameer Raza Malik"
     )
 
     print("\n========== SQL AGENT ==========")

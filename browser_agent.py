@@ -34,6 +34,11 @@ Rules:
 13. Before submitting the form, verify that the entered information matches
     the provided customer data.
 14. Only call tools that were provided to you in this conversation.
+15. For State and City dropdown fields: if the available dropdown options do
+    not contain the customer's actual state or city (for example, a form may
+    only list Indian states while the customer is Pakistani), SKIP those
+    fields entirely — do not select any value. Never pick a random or
+    unrelated option as a fallback.
 """
 
 REMOVE_TOOLS = {
@@ -188,8 +193,8 @@ if __name__ == "__main__":
         "mobile": "3001234567",
         "date_of_birth": "1998-04-12",
         "address": "House 12, Street 5, F-10",
-        "state": "NCR",
-        "city": "Delhi",
+        "state": "Islamabad Capital Territory",
+        "city": "Islamabad",
         "subjects": "Maths,Physics",
         "hobbies": "Reading,Music",
     }

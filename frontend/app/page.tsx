@@ -2,8 +2,8 @@
 
 import { FormEvent, useMemo, useState } from "react";
 
-const defaultTemplate =
-  "Navigate to {url}. Fill the registration form using the provided customer data. If the form contains additional required fields that are not present in the customer data, generate realistic placeholder values. Leave optional fields blank when appropriate. Complete and submit the form.";
+const defaultPrompt =
+  "Get all details for the customer named Sameer Raza Malik. Fill the registration form using the provided customer data. IMPORTANT: The target form's State and City dropdowns only contain Indian states. Do NOT fill the State and City fields; skip them entirely. If the form contains additional required fields that are not present in the customer data, generate realistic placeholder values. Leave optional fields blank when appropriate. Complete and submit the form.";
 
 type PipelineState = {
   sql_question: string;
@@ -22,10 +22,12 @@ type RunResponse = {
   durationMs?: number;
 };
 
-type TraceItem = {
-  title: string;
-  body: string;
-  tone: "sql" | "browser" | "system" | "error";
+type AgentStage = {
+  id: string;
+  label: string;
+  icon: string;
+  status: "idle" | "running" | "done" | "error";
+  detail: string;
 };
 
 function sectionBetween(logs: string, start: string, end?: string) {
@@ -39,41 +41,6 @@ function sectionBetween(logs: string, start: string, end?: string) {
   return logs
     .slice(contentStart, endIndex === -1 ? undefined : endIndex)
     .trim();
-}
-
-function parseTrace(rawLogs = "", error?: string): TraceItem[] {
-  const items: TraceItem[] = [];
-  const chunks = rawLogs
-    .split(/\n(?========== )/)
-    .map((chunk) => chunk.trim())
-    .filter(Boolean);
-
-  for (const chunk of chunks) {
-    const titleMatch = chunk.match(/^=+\s*([^=\n]+?)\s*=+/);
-    const title = titleMatch?.[1]?.trim() || "Agent trace";
-    const lowerTitle = title.toLowerCase();
-    const tone = lowerTitle.includes("sql")
-      ? "sql"
-      : lowerTitle.includes("browser") || lowerTitle.includes("agent trace")
-        ? "browser"
-        : "system";
-
-    items.push({
-      title,
-      body: chunk.replace(/^=+\s*[^=\n]+?\s*=+\s*/, "").trim(),
-      tone,
-    });
-  }
-
-  if (error) {
-    items.unshift({
-      title: "Pipeline Error",
-      body: error,
-      tone: "error",
-    });
-  }
-
-  return items;
 }
 
 function formatDuration(durationMs?: number) {
@@ -104,15 +71,89 @@ function FieldIcon({ label }: { label: string }) {
   );
 }
 
-export default function Home() {
-  const [sqlQuestion, setSqlQuestion] = useState(
-    "Get all details for the customer named Ayesha Khan",
+function deriveAgentStages(
+  isRunning: boolean,
+  rawLogs: string,
+  result: RunResponse | null,
+): AgentStage[] {
+  const hasError = Boolean(result?.error);
+  const hasSql = rawLogs.includes("GENERATED SQL");
+  const hasSqlExec = rawLogs.includes("EXECUTING SQL");
+  const hasBrowser = rawLogs.includes("BROWSER AGENT");
+  const hasBrowserResult = Boolean(result?.state?.browser_result);
+  const hasCustomer = Boolean(result?.state?.customer_data);
+
+  const generatedSql = sectionBetween(
+    rawLogs,
+    "========== GENERATED SQL ==========",
+    "========== EXECUTING SQL ==========",
   );
+
+  // --- Orchestrator ---
+  let orchStatus: AgentStage["status"] = "idle";
+  let orchDetail = "Waiting to start pipeline…";
+  if (hasError && !hasSql) {
+    orchStatus = "error";
+    orchDetail = "Pipeline failed before SQL generation.";
+  } else if (hasBrowserResult || (hasCustomer && !isRunning)) {
+    orchStatus = "done";
+    orchDetail = "Pipeline complete. All agents finished.";
+  } else if (isRunning) {
+    orchStatus = "running";
+    orchDetail = "Coordinating agents…";
+  }
+
+  // --- SQL Agent ---
+  let sqlStatus: AgentStage["status"] = "idle";
+  let sqlDetail = "Waiting for orchestrator…";
+  if (hasError && hasSql && !hasCustomer) {
+    sqlStatus = "error";
+    sqlDetail = result?.error?.includes("No matching customer")
+      ? "No matching customer found."
+      : "SQL execution failed.";
+  } else if (hasCustomer) {
+    sqlStatus = "done";
+    sqlDetail = generatedSql
+      ? `Executed: ${generatedSql.slice(0, 80)}${generatedSql.length > 80 ? "…" : ""}`
+      : "Query executed — customer resolved.";
+  } else if (hasSql && isRunning) {
+    sqlStatus = "running";
+    sqlDetail = hasSqlExec ? "Executing query…" : "Generating SQL…";
+  } else if (isRunning) {
+    sqlStatus = "running";
+    sqlDetail = "Generating SQL from natural language…";
+  }
+
+  // --- Browser Agent ---
+  let browserStatus: AgentStage["status"] = "idle";
+  let browserDetail = "Waiting for customer data…";
+  if (hasError && hasBrowser) {
+    browserStatus = "error";
+    browserDetail = "Browser agent encountered an error.";
+  } else if (hasBrowserResult) {
+    browserStatus = "done";
+    const txt = result?.state?.browser_result || "";
+    browserDetail = txt.slice(0, 100) + (txt.length > 100 ? "…" : "");
+  } else if (hasBrowser && isRunning) {
+    browserStatus = "running";
+    browserDetail = "Automating browser form fill…";
+  } else if (hasCustomer && isRunning) {
+    browserStatus = "running";
+    browserDetail = "Launching Playwright browser…";
+  }
+
+  return [
+    { id: "orchestrator", label: "Orchestrator", icon: "🧠", status: orchStatus, detail: orchDetail },
+    { id: "sql", label: "SQL Agent", icon: "🗄️", status: sqlStatus, detail: sqlDetail },
+    { id: "browser", label: "Browser Agent", icon: "🌐", status: browserStatus, detail: browserDetail },
+  ];
+}
+
+export default function Home() {
+  const [userPrompt, setUserPrompt] = useState(defaultPrompt);
   const [targetUrl, setTargetUrl] = useState(
     "https://demoqa.com/automation-practice-form",
   );
-  const [browserGoalTemplate, setBrowserGoalTemplate] =
-    useState(defaultTemplate);
   const [result, setResult] = useState<RunResponse | null>(null);
   const [isRunning, setIsRunning] = useState(false);
 
@@ -132,8 +173,8 @@ export default function Home() {
     "========== EXECUTING SQL ==========",
     "========== BROWSER AGENT ==========",
   );
-  const traceItems = parseTrace(rawLogs, result?.error);
   const hasResult = Boolean(result?.state || result?.error);
+  const agentStages = deriveAgentStages(isRunning, rawLogs, result);
 
   async function runPipeline(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -145,9 +186,8 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sqlQuestion,
+          userPrompt,
           targetUrl,
-          browserGoalTemplate,
         }),
       });
       const payload = (await response.json()) as RunResponse;
@@ -165,11 +205,12 @@ export default function Home() {
       <section className="workspace">
         <header className="hero">
           <div>
-            <p className="eyebrow">Agentic Browser Automation</p>
+            <p className="eyebrow">Multi-Agent System</p>
             <h1>Browser Automation Using Agentic Loops</h1>
             <p className="heroCopy">
-              Run the LangGraph pipeline, inspect the SQL decision, then watch
-              the browser agent trace from one focused dashboard.
+              A multi-agent pipeline powered by LangGraph — the Orchestrator
+              coordinates the SQL Agent and Browser Agent to automate
+              end-to-end form filling.
             </p>
           </div>
           <div className="heroMeta">
@@ -183,8 +224,8 @@ export default function Home() {
 
         <section className="summaryStrip">
           <div>
-            <span>Pipeline</span>
-            <strong>SQL lookup → browser form fill</strong>
+            <span>Architecture</span>
+            <strong>Multi-Agent Pipeline</strong>
           </div>
           <div>
             <span>Target</span>
@@ -195,8 +236,8 @@ export default function Home() {
             <strong>{formatDuration(result?.durationMs)}</strong>
           </div>
           <div>
-            <span>Rows</span>
-            <strong>{customerRows.length ? "1 customer" : "Waiting"}</strong>
+            <span>Agents</span>
+            <strong>{agentStages.filter(s => s.status === "done").length} / {agentStages.length} completed</strong>
           </div>
         </section>
 
@@ -208,15 +249,16 @@ export default function Home() {
                 <h2>Run Configuration</h2>
               </div>
               <button disabled={isRunning} type="submit">
-                {isRunning ? "Running..." : "Run Pipeline"}
+                {isRunning ? "Running…" : "Run Pipeline"}
               </button>
             </div>
 
             <label>
-              <span>Customer query</span>
-              <input
-                value={sqlQuestion}
-                onChange={(event) => setSqlQuestion(event.target.value)}
+              <span>Orchestrator prompt</span>
+              <textarea
+                value={userPrompt}
+                onChange={(event) => setUserPrompt(event.target.value)}
+                rows={8}
               />
             </label>
 
@@ -227,42 +269,50 @@ export default function Home() {
                 onChange={(event) => setTargetUrl(event.target.value)}
               />
             </label>
-
-            <label>
-              <span>Browser goal template</span>
-              <textarea
-                value={browserGoalTemplate}
-                onChange={(event) => setBrowserGoalTemplate(event.target.value)}
-                rows={8}
-              />
-            </label>
           </form>
 
           <aside className="executionPanel">
             <div className="panelTitle">
               <div>
-                <p className="sectionKicker">Live Trace</p>
+                <p className="sectionKicker">Agent Flow</p>
                 <h2>Execution Timeline</h2>
               </div>
-              <span className="countBadge">{traceItems.length || 0} events</span>
+              <span className="countBadge">
+                {agentStages.filter(s => s.status === "done").length} / {agentStages.length} agents
+              </span>
             </div>
-            <div className="timeline">
-              {traceItems.length ? (
-                traceItems.slice(0, 8).map((item, index) => (
-                  <article className="traceCard" data-tone={item.tone} key={`${item.title}-${index}`}>
-                    <div className="traceMarker">{String(index + 1).padStart(2, "0")}</div>
-                    <div>
-                      <h3>{item.title}</h3>
-                      <pre>{item.body || "Trace checkpoint reached."}</pre>
+            <div className="agentFlow">
+              {agentStages.map((stage, index) => (
+                <div key={stage.id}>
+                  <article className="agentNode" data-status={stage.status} data-agent={stage.id}>
+                    <div className="agentNodeHeader">
+                      <span className="agentIcon">{stage.icon}</span>
+                      <div>
+                        <h3>{stage.label}</h3>
+                        <span className="agentStatusBadge" data-status={stage.status}>
+                          {stage.status === "idle" && "Pending"}
+                          {stage.status === "running" && "Running"}
+                          {stage.status === "done" && "Complete"}
+                          {stage.status === "error" && "Failed"}
+                        </span>
+                      </div>
                     </div>
+                    <p className="agentDetail">{stage.detail}</p>
+                    {stage.status === "running" && (
+                      <div className="agentProgress">
+                        <div className="agentProgressBar" />
+                      </div>
+                    )}
                   </article>
-                ))
-              ) : (
-                <div className="emptyTrace">
-                  <span />
-                  <p>Trace events will appear here after the first run.</p>
+                  {index < agentStages.length - 1 && (
+                    <div className="agentConnector" data-active={stage.status === "done" ? "true" : "false"}>
+                      <svg width="24" height="32" viewBox="0 0 24 32">
+                        <path d="M12 0 L12 24 L6 18 M12 24 L18 18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  )}
                 </div>
-              )}
+              ))}
             </div>
           </aside>
         </section>

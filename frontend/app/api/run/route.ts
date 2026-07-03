@@ -6,9 +6,8 @@ import { NextResponse } from "next/server";
 const execFileAsync = promisify(execFile);
 
 type RunBody = {
-  sqlQuestion?: string;
+  userPrompt?: string;
   targetUrl?: string;
-  browserGoalTemplate?: string;
 };
 
 function pythonCommand(projectRoot: string) {
@@ -27,9 +26,9 @@ export async function POST(request: Request) {
   const body = (await request.json()) as RunBody;
   const startedAt = Date.now();
 
-  if (!body.sqlQuestion || !body.targetUrl || !body.browserGoalTemplate) {
+  if (!body.userPrompt || !body.targetUrl) {
     return NextResponse.json(
-      { error: "sqlQuestion, targetUrl, and browserGoalTemplate are required." },
+      { error: "userPrompt and targetUrl are required." },
       { status: 400 },
     );
   }
@@ -43,12 +42,10 @@ export async function POST(request: Request) {
       [
         scriptPath,
         "--json",
-        "--sql-question",
-        body.sqlQuestion,
+        "--user-prompt",
+        body.userPrompt,
         "--target-url",
         body.targetUrl,
-        "--browser-goal-template",
-        body.browserGoalTemplate,
       ],
       {
         cwd: projectRoot,

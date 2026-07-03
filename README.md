@@ -92,7 +92,7 @@ generate_sql -> execute_sql -> done
 It receives a natural-language request like:
 
 ```text
-Get all details for the customer named Ayesha Khan
+Get all details for the customer named Sameer Raza Malik
 ```
 
 Then it generates exactly one SQLite `SELECT` query using the known customer
@@ -113,11 +113,10 @@ The SQL prompt blocks destructive operations:
 `orchestrator.py` wires both agents together as a top-level LangGraph:
 
 ```text
-fetch_data -> fill_form -> END
+analyze_prompt -> fetch_data -> fill_form -> END
 ```
 
-The first node calls `run_sql_agent(...)`. The second node calls
-`run_browser_agent(...)` with the selected row as structured customer data.
+The first node uses an LLM to parse a single user prompt into the required SQL query and browser goal template. The second node calls `run_sql_agent(...)`. The third node calls `run_browser_agent(...)` with the selected row as structured customer data.
 
 The frontend calls:
 
@@ -222,7 +221,7 @@ npm run build:clean
 
 ## Dashboard Panels
 
-- **Run Configuration**: customer query, target URL, browser goal template.
+- **Run Configuration**: unified orchestrator prompt and target URL.
 - **Execution Timeline**: parsed trace checkpoints from the Python pipeline.
 - **Generated SQL**: the SQL produced by the SQL agent.
 - **Resolved Record**: the customer row returned from SQLite.
