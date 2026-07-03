@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VisionRD Agent Console",
+  title: "Browser Automation Using Agentic Loops",
   description: "Run the SQL-to-browser automation pipeline from a local UI.",
 };
 

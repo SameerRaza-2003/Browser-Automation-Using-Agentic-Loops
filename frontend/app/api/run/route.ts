@@ -25,6 +25,7 @@ function pythonCommand(projectRoot: string) {
 
 export async function POST(request: Request) {
   const body = (await request.json()) as RunBody;
+  const startedAt = Date.now();
 
   if (!body.sqlQuestion || !body.targetUrl || !body.browserGoalTemplate) {
     return NextResponse.json(
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       state: JSON.parse(stdout),
       logs: stderr,
+      durationMs: Date.now() - startedAt,
     });
   } catch (error) {
     const err = error as Error & {
@@ -74,6 +76,7 @@ export async function POST(request: Request) {
         stdout: err.stdout,
         stderr: err.stderr,
         code: err.code,
+        durationMs: Date.now() - startedAt,
       },
       { status: 500 },
     );

@@ -96,7 +96,7 @@ def run_pipeline(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the VisionRD agent pipeline.")
+    parser = argparse.ArgumentParser(description="Run the agentic browser automation pipeline.")
     parser.add_argument(
         "--sql-question",
         default="Get all details for the customer named Ayesha Khan",

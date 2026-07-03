@@ -98,7 +98,7 @@ async def run_browser_agent(goal: str, structured_data: dict) -> str:
             temperature=0,
             default_headers={
                 "HTTP-Referer": "http://localhost",
-                "X-Title": "VisionRD Browser Agent",
+                "X-Title": "Browser Automation Using Agentic Loops",
             },
         )
 

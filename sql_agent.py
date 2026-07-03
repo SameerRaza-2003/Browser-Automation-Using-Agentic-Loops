@@ -38,7 +38,7 @@ llm = ChatOpenAI(
     temperature=0,
     default_headers={
         "HTTP-Referer": "http://localhost",
-        "X-Title": "VisionRD SQL Agent",
+        "X-Title": "Browser Automation Using Agentic Loops",
     },
 )
 
